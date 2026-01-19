@@ -24,7 +24,7 @@ def main():
         raise SystemExit("No CT_* DICOM found in data/samples/")
     run("src/dimse/send_study.py", files[-1])
 
-    print("\nDone. Open http://localhost:8042/ui/ (orthanc/orthanc) to view the study.")
+    print("\nDone. Open http://localhost:8042/ (orthanc/orthanc) to view the study.")
 
 if __name__ == "__main__":
     main()
