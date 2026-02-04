@@ -5,6 +5,8 @@ __pycache__/
 
 # Data/Runtime
 data/inbox/
+data/
+data
 inbox/
 *.dcm
 *.log
