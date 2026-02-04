@@ -1,21 +1,24 @@
-# PACS Lab Simulator (MVP)
+# PACS Lab Simulator
 
 A minimal, Windows-friendly PACS sandbox that simulates a radiology workflow:
 
-**HL7-ish order → Modality Worklist (.wl) → “Acquisition” → C-STORE to PACS → Web viewer**
+**HL7 generation → Modality Worklist (.wl) → “Acquisition” → C-STORE to PACS → Web viewer → FHIR export / C-MOVE retrieval**
 
 Built for radiologic technologists transitioning into data/PACS analytics. Uses **Orthanc** (Docker) + **Python** (pydicom, pynetdicom).
 
 ---
 
-## Features (MVP)
+## Features
 
 - **Orthanc PACS** in Docker (DICOM 4242, REST 8042), DICOMweb enabled  
 - **Worklists plugin** (DIMSE-only) serving **`.wl`** files from a host folder  
 - **Modality Worklist C-FIND** client (AET `PYMOD1`)  
 - **Acquisition generator** → valid **CT Image Storage** from MWL data  
 - **C-STORE** sender to PACS  
-- **Admin helpers** (echo/register/list, push-store, list worklists)  
+- **C-MOVE** study retrieval (Orthanc → local SCP)  
+- **Admin helpers** (echo/register/list, push-store, list worklists, UID verify)  
+- **HL7 message generation** (basic ORM/ADT-like for order simulation)  
+- **FHIR export** — converts stored study data to FHIR resources after C-STORE  
 - **No PHI** (synthetic demographics; runtime artifacts gitignored)
 
 ---
@@ -42,20 +45,26 @@ You’ll see a study for **PID `P12345`** with **Accession `ACC1001`**, modality
 
 ---
 
-## Architecture (MVP)
+## Architecture
 
 ```
 +------------------+          (.wl files)          +------------------+
-|  "RIS-ish" gen   | --writes--> ./worklists  -->  |   Orthanc PACS   |
-| (Python ER7→WL)  |                                |  + Worklists     |
+| HL7 generator    | --writes order--> ./worklists -->  |   Orthanc PACS   |
+| (generate_hl7.py)|                                |  + Worklists     |
 +------------------+                                |  + DICOMweb      |
            ^                                        +---------+--------+
            |                                                     ^
-           | MWL C-FIND (DIMSE 4242)                             | C-STORE
+           | MWL C-FIND (DIMSE 4242)                             | C-STORE / C-MOVE
 +----------+-----------+                                         |
 |   Modality Sim      | --creates CT .dcm --> ./data/samples --> |
 | (find_mwl + acquire)|                                         |
 +---------------------+------------------------------------------+
+                                                     |
+                                                     v
+                                               +------------+
+                                               | FHIR Export|
+                                               | (JSON resources)|
+                                               +------------+
 ```
 
 ---
@@ -68,22 +77,25 @@ requirements.txt
 src/
   admin/
     create_wl_file.py           # generate minimal .wl for Worklists plugin
-    list_worklists.py           # local viewer for .wl files (for demos)
-    register_modality.py        # register a DICOM destination in Orthanc
     echo_modality.py            # C-ECHO test from Orthanc
-    show_modality_config.py     # show a modality's config
-    list_modalities.py
+    generate_hl7.py             # generate basic HL7-like order messages
+    list_worklists.py           # local viewer for .wl files (for demos)
     push_store.py               # PACS -> SCP push (C-STORE)
+    register_modality.py        # register a DICOM destination in Orthanc
+    show_modality_config.py     # show a modality's config
     verify_uid.py               # verify study UID in Orthanc
   dimse/
+    acquire_from_mwl.py         # synthesize CT image from MWL data
     find_mwl.py                 # MWL C-FIND (modality side)
     find_mwl_verbose.py         # verbose variant
-    acquire_from_mwl.py         # synthesize CT image from MWL data
-    send_study.py               # C-STORE to Orthanc
+    find_studies.py             # query studies in Orthanc
+    move_study.py               # initiate C-MOVE retrieval
     recv_scp.py                 # simple C-STORE SCP -> ./data/inbox
-  demo.py                       # one-command demo runner
+    send_study.py               # C-STORE to Orthanc
+    demo.py                     # one-command demo runner
+    export_to_fhir.py           # export stored DICOM study to FHIR resources
 data/
-  samples/                      # generated demo DICOM(s)
+  samples/                      # generated demo DICOM(s) + FHIR JSON output
   inbox/                        # runtime receiving folder (gitignored)
 worklists/                      # MWL .wl files served by Orthanc
 ```
@@ -124,10 +136,11 @@ worklists/                      # MWL .wl files served by Orthanc
 - `src/dimse/send_study.py`  
   Sends a DICOM file to Orthanc via **C-STORE**.
 
-### Admin / Troubleshooting
+### Admin / Troubleshooting / Export
 - `src/dimse/recv_scp.py` — simple **C-STORE SCP** writing to `data/inbox/`  
 - `src/admin/push_store.py` — Orthanc-initiated push to your SCP  
 - `src/admin/register_modality.py`, `echo_modality.py`, `show_modality_config.py`, `list_modalities.py`, `verify_uid.py`
+- `src/dimse/export_to_fhir.py` — exports stored study to FHIR JSON resources
 
 ---
 
@@ -168,9 +181,6 @@ Re-run: `python src/dimse/find_mwl_verbose.py` (expect `Status: 0xff00` then `Ma
 - Open firewall if you run a local SCP on 11112:  
   `netsh advfirewall firewall add rule name="DICOM-11112" dir=in action=allow protocol=TCP localport=11112`
 
-**Why MWL isn’t visible in the web UI**  
-→ The Worklists plugin is **DIMSE-only** (no web listing). Use `src/admin/list_worklists.py` to print `.wl` contents locally.
-
 ---
 
 ## Security / PHI
@@ -187,16 +197,6 @@ Re-run: `python src/dimse/find_mwl_verbose.py` (expect `Status: 0xff00` then `Ma
 - DIMSE clients/servers: **C-FIND (MWL)**, **C-STORE**, echo/register admin  
 - Programmatic **DICOM** generation and reconciliation from MWL  
 - Practical PACS ops: AET authorization, presentation contexts, Docker config
-
----
-
-## Roadmap
-
-- MPPS (Performed Procedure Step) simulation  
-- C-MOVE end-to-end (Orthanc → local SCP)  
-- HL7 v2 (ADT/ORM) + interface-engine style routing  
-- DICOMweb (QIDO/WADO/STOW) examples + basic analytics notebooks  
-- Routing rules (Orthanc Lua) + anonymization pipelines
 
 ---
 
