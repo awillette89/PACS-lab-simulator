@@ -197,6 +197,7 @@ Re-run: `python src/dimse/find_mwl_verbose.py` (expect `Status: 0xff00` then `Ma
 - DIMSE clients/servers: **C-FIND (MWL)**, **C-STORE**, echo/register admin  
 - Programmatic **DICOM** generation and reconciliation from MWL  
 - Practical PACS ops: AET authorization, presentation contexts, Docker config
+- FHIR interoperability: Export of stored DICOM studies to modern healthcare standards
 
 ---
 
