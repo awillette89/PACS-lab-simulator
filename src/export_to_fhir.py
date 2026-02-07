@@ -9,7 +9,6 @@ from requests.auth import HTTPBasicAuth
 print("DEBUG: export_to_fhir.py module loaded successfully")
 
 def get_study_metadata_from_orthanc(study_uid: str, orthanc_url: str = "http://localhost:8042"):
-    print("DEBUG: Starting Orthanc query for UID:", study_uid)          # ← Add this
     qido_url = f"{orthanc_url}/dicom-web/studies"
     params = {
         "StudyInstanceUID": study_uid,
@@ -17,12 +16,9 @@ def get_study_metadata_from_orthanc(study_uid: str, orthanc_url: str = "http://l
         "limit": 1
     }
     auth = HTTPBasicAuth("orthanc", "orthanc")
-    print("DEBUG: Using auth:", auth)                                   # ← Add this
 
     try:
         response = requests.get(qido_url, params=params, auth=auth)
-        print("DEBUG: Response status:", response.status_code)          # ← Add this
-        print("DEBUG: Response text preview:", response.text[:200])     # ← Add this
         response.raise_for_status()
     except requests.exceptions.HTTPError as e:
         print("DEBUG: HTTP error details:", e.response.text)            # ← Better error info
